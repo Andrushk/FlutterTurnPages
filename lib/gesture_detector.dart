@@ -97,9 +97,6 @@ class SwipeStack extends StatelessWidget {
           onHorizontalDragCancel: () {
             controller.cancel();
           },
-          child: Container(
-            color: Colors.transparent,
-          ),
         ),
       ],
     );
