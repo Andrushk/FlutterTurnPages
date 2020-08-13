@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_turn_pages/Page3.dart';
-import 'package:flutter_turn_pages/common/pages/stack_page.dart';
+import 'package:flutter_turn_pages/common/pages/stack_no_gestures_page.dart';
 import 'package:flutter_turn_pages/page1.dart';
 import 'package:flutter_turn_pages/page2.dart';
 
@@ -13,7 +13,7 @@ class StackDemoPage extends PageBase {
   _StackDemoPageState createState() => _StackDemoPageState();
 }
 
-class _StackDemoPageState extends PageBaseState<StackDemoPage> with StackPage {
+class _StackDemoPageState extends PageBaseState<StackDemoPage> with StackNoGesturesPage {
   @override
   Widget buildAppBar() {
     return Container(

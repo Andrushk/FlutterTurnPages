@@ -4,7 +4,7 @@ import 'package:flutter_turn_pages/common/style/colors.dart';
 import 'package:flutter_turn_pages/common/style/padding.dart';
 import 'package:flutter_turn_pages/common/style/size.dart';
 
-mixin StackPage<Page extends PageBase> on PageBaseState<Page> {
+mixin StackNoGesturesPage<Page extends PageBase> on PageBaseState<Page> {
   int pageIndex = 0;
 
   @override
@@ -33,6 +33,7 @@ mixin StackPage<Page extends PageBase> on PageBaseState<Page> {
             ),
           ),
           GestureDetector(
+            onHorizontalDragStart: (details){},
             onHorizontalDragUpdate: (details) {
               print(
                   'delta=${details.delta}, local=${details.localPosition}, global=${details.globalPosition}');
