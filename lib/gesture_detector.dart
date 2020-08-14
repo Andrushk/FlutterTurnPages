@@ -74,8 +74,6 @@ class SwipeStack extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    RenderBox box = context.findRenderObject();
-
     return Stack(
       overflow: Overflow.visible,
       children: [
@@ -92,22 +90,24 @@ class SwipeStack extends StatelessWidget {
         StreamBuilder<FlyingPageData>(
           stream: controller.flyingPage,
           builder: (context, snapshot) {
-            return snapshot.data == null
+            final pageData = snapshot.data;
+            return pageData == null
                 ? Container()
                 : Positioned(
-                    left: snapshot.data.x,
+                    left: pageData.left,
                     top: 0,
-                    width: box.size.width,
-                    height: box.size.height,
+                    width: pageData.width,
+                    height: pageData.height,
                     child: Transform.rotate(
-                      angle: snapshot.data.angle,
-                      child: children[snapshot.data.pageIndex],
+                      angle: pageData.angle,
+                      child: children[pageData.pageIndex],
                     ),
                   );
           },
         ),
         GestureDetector(
           onHorizontalDragStart: (details) {
+            RenderBox box = context.findRenderObject();
             controller.start(box.size, details.localPosition);
           },
           onHorizontalDragUpdate: (details) {
@@ -126,19 +126,29 @@ class SwipeStack extends StatelessWidget {
 }
 
 class FlyingPageData {
-  final double x;
+  final double left;
+  final Size size;
   final double angle;
   final int pageIndex;
 
-  FlyingPageData(this.x, this.angle, this.pageIndex);
+  double get width => size.width;
+
+  double get height => size.height;
+
+  FlyingPageData(
+    this.left,
+    this.size,
+    this.angle,
+    this.pageIndex,
+  );
 }
 
 const xSpeedFactor = 2.0;
 const angleSpeedFactor = 6.0;
 
 class HorizontalSwipeController {
+  Size _viewSize;
   double _startAtX;
-  double _sizeToSwitchX;
   double _position;
   int currentPage = 0;
   List<Widget> _items = [];
@@ -155,24 +165,28 @@ class HorizontalSwipeController {
   }
 
   start(Size viewSize, Offset initialPosition) {
+    _viewSize = viewSize;
     _startAtX = initialPosition.dx;
-    _sizeToSwitchX = viewSize.width / 2;
   }
 
   move(Offset currentPosition) {
-    if (_startAtX == null || _sizeToSwitchX == null) return;
+    if (_startAtX == null || _viewSize == null) return;
+
     final dx = currentPosition.dx - _startAtX;
-    _position = (dx / _sizeToSwitchX).clamp(-1.0, 1.0);
+    final halfWidth = _viewSize.width/2;
+    _position = (dx / halfWidth).clamp(-1.0, 1.0);
 
     if (_position > 0) {
       flyingPageController.add(FlyingPageData(
-        (dx - _sizeToSwitchX) * xSpeedFactor,
-        (_position-1) / angleSpeedFactor,
+        (dx - halfWidth) * xSpeedFactor,
+        _viewSize,
+        (_position - 1) / angleSpeedFactor,
         0,
       ));
-    } else if (_position<0) {
+    } else if (_position < 0) {
       flyingPageController.add(FlyingPageData(
         dx * xSpeedFactor,
+        _viewSize,
         _position / angleSpeedFactor,
         0,
       ));
@@ -206,6 +220,7 @@ class HorizontalSwipeController {
   }
 
   cancel() {
+    _viewSize = null;
     _startAtX = null;
     flyingPageController.add(null);
   }
