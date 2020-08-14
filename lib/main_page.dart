@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_turn_pages/demo.dart';
 import 'package:flutter_turn_pages/gesture_detector.dart';
 import 'package:flutter_turn_pages/page_view_demo_page.dart';
 import 'package:flutter_turn_pages/stack_demo_page.dart';
@@ -37,13 +36,6 @@ class MainPage extends StatelessWidget {
               onPressed: () {
                 Navigator.push(context,
                     MaterialPageRoute(builder: (context) => HorizontalSwipe()));
-              },
-            ),
-            RaisedButton(
-              child: Text('пример со StackOverflow'),
-              onPressed: () {
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (context) => MyHomePage()));
               },
             ),
           ],
