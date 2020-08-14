@@ -125,32 +125,45 @@ class SwipeStack extends StatelessWidget {
   }
 }
 
+/// Состоняие страницы, которую в данный момент тянут
 class FlyingPageData {
+  final StartDragData startData;
   final double left;
-  final Size size;
   final double angle;
   final int pageIndex;
 
-  double get width => size.width;
+  double get width => startData.boxWidth;
 
-  double get height => size.height;
+  double get height => startData.boxHeight;
 
   FlyingPageData(
+    this.startData,
     this.left,
-    this.size,
     this.angle,
     this.pageIndex,
   );
+}
+
+/// Состоние на момент начала перетаскивания
+class StartDragData {
+  final double startX;
+  final double boxWidth;
+  final double boxHeight;
+  final double halfWidth;
+  final int pageIndex;
+
+  StartDragData({this.startX, this.boxWidth, this.boxHeight, this.pageIndex})
+      : halfWidth = boxWidth / 2;
+
+  double dx(double currentX) => currentX - startX;
 }
 
 const xSpeedFactor = 2.0;
 const angleSpeedFactor = 6.0;
 
 class HorizontalSwipeController {
-  Size _viewSize;
-  double _startAtX;
-  double _position;
-  int currentPage = 0;
+  StartDragData _startData;
+  int currentPageIndex = 0;
   List<Widget> _items = [];
 
   final topPageNumberController = BehaviorSubject<int>();
@@ -165,63 +178,84 @@ class HorizontalSwipeController {
   }
 
   start(Size viewSize, Offset initialPosition) {
-    _viewSize = viewSize;
-    _startAtX = initialPosition.dx;
+    _startData = StartDragData(
+      startX: initialPosition.dx,
+      boxWidth: viewSize.width,
+      boxHeight: viewSize.height,
+      pageIndex: currentPageIndex,
+    );
   }
 
   move(Offset currentPosition) {
-    if (_startAtX == null || _viewSize == null) return;
+    if (_startData == null) return;
 
-    final dx = currentPosition.dx - _startAtX;
-    final halfWidth = _viewSize.width/2;
-    _position = (dx / halfWidth).clamp(-1.0, 1.0);
+    final dx = _startData.dx(currentPosition.dx);
+    final deviation = (dx / _startData.halfWidth).clamp(-1.0, 1.0);
 
-    if (_position > 0) {
+    // тащим вправо
+    if (deviation > 0) {
+      var flyPageIdx = currentPageIndex - 1;
+      // слева еще есть траницы
+      if (flyPageIdx >= 0) {
+        flyingPageController.add(
+          FlyingPageData(
+            _startData,
+            (dx - _startData.halfWidth) * xSpeedFactor,
+            (deviation - 1) / angleSpeedFactor,
+            flyPageIdx,
+          ),
+        );
+      } else {
+        // уже смотрим на последнюю станицу и больше слева ничего нет
+        var vp = deviation.clamp(0, 0.1) * _startData.halfWidth;
+
+        flyingPageController.add(
+          FlyingPageData(
+            _startData,
+            vp * xSpeedFactor,
+            deviation.clamp(0, 0.1) / angleSpeedFactor,
+            0,
+          ),
+        );
+      }
+    } else if (deviation < 0) {
       flyingPageController.add(FlyingPageData(
-        (dx - halfWidth) * xSpeedFactor,
-        _viewSize,
-        (_position - 1) / angleSpeedFactor,
-        0,
-      ));
-    } else if (_position < 0) {
-      flyingPageController.add(FlyingPageData(
+        _startData,
         dx * xSpeedFactor,
-        _viewSize,
-        _position / angleSpeedFactor,
+        deviation / angleSpeedFactor,
         0,
       ));
     }
 
     //print('dx=$dx, offset = $_position');
 
-    if (_position >= 1) {
+    if (deviation >= 1) {
       cancel();
       nextPage();
     }
 
-    if (_position <= -1) {
+    if (deviation <= -1) {
       cancel();
       prevPage();
     }
   }
 
   nextPage() {
-    if (currentPage <= 0) return;
-    currentPage--;
-    topPageNumberController.add(currentPage);
+    if (currentPageIndex <= 0) return;
+    currentPageIndex--;
+    topPageNumberController.add(currentPageIndex);
     print('next');
   }
 
   prevPage() {
-    if (currentPage >= _items.length - 1) return;
-    currentPage++;
-    topPageNumberController.add(currentPage);
+    if (currentPageIndex >= _items.length - 1) return;
+    currentPageIndex++;
+    topPageNumberController.add(currentPageIndex);
     print('prev');
   }
 
   cancel() {
-    _viewSize = null;
-    _startAtX = null;
+    _startData = null;
     flyingPageController.add(null);
   }
 
