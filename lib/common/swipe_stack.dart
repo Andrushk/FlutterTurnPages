@@ -1,75 +1,34 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';
-import 'package:flutter_turn_pages/common/pages/page_base.dart';
-import 'package:flutter_turn_pages/common/pages/simple_page.dart';
-import 'package:flutter_turn_pages/common/style/colors.dart';
-import 'package:flutter_turn_pages/common/style/padding.dart';
-import 'package:flutter_turn_pages/common/style/size.dart';
-import 'package:flutter_turn_pages/page1.dart';
-import 'package:flutter_turn_pages/page2.dart';
-import 'package:flutter_turn_pages/page3.dart';
 import 'package:rxdart/rxdart.dart';
 
-class HorizontalSwipe extends PageBase {
-  @override
-  _HorizontalSwipeState createState() => _HorizontalSwipeState();
-}
+// На сколько скорость изменения параметра больше скорости движения пальца
+const xSpeedFactor = 2.0;
+const angleSpeedFactor = 6.0;
 
-class _HorizontalSwipeState extends PageBaseState<HorizontalSwipe>
-    with SimplePage {
-  final _controller = HorizontalSwipeController();
-
-  @override
-  Widget buildAppBar(BuildContext context) {
-    return SafeArea(
-      child: Row(
-        children: [BackButton()],
-      ),
-    );
-  }
-
-  @override
-  Widget buildBody(BuildContext context) {
-    return SwipeStack(
-      controller: _controller,
-      children: [
-        wrapPage(Page1()),
-        wrapPage(Page2()),
-        wrapPage(Page3()),
-      ],
-      bottomPage: bottomPage(),
-    );
-  }
-
-  Widget wrapPage(Widget page) => Padding(
-        padding: const EdgeInsets.only(bottom: 15.0),
-        child: PageCard(child: page),
-      );
-
-  Widget bottomPage() => Padding(
-        padding: const EdgeInsets.only(top: 15.0),
-        child: Transform.rotate(
-          child: PageCard(child: Container()),
-          angle: -.05,
-        ),
-      );
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-}
-
-//todo если HorizontalSwipeController создан внутри, то надо его диспозить
-class SwipeStack extends StatelessWidget {
+/// Колода карточек, которые можно листать смахиванием вправо-влево
+/// На верху карточка с индексом - 0, чем больше индекс, тем глубже карточка.
+/// Свайп влево - смахиваем вернюю карточку и переходим к более "глубокой".
+/// Свайп вправо - возвращаем карточку на верх колоды.
+class SwipeStack extends StatefulWidget {
   final HorizontalSwipeController controller;
   final List<Widget> children;
   final Widget bottomPage;
 
-  SwipeStack(
-      {this.controller, this.children = const <Widget>[], this.bottomPage}) {
-    controller._setItems(children);
+  SwipeStack({
+    HorizontalSwipeController controller,
+    this.children: const <Widget>[],
+    this.bottomPage,
+  }) : this.controller = controller ?? HorizontalSwipeController();
+
+  @override
+  _SwipeStackState createState() => _SwipeStackState();
+}
+
+class _SwipeStackState extends State<SwipeStack> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller._setItems(widget.children);
   }
 
   @override
@@ -77,20 +36,20 @@ class SwipeStack extends StatelessWidget {
     return Stack(
       overflow: Overflow.visible,
       children: [
-        bottomPage ?? Container(),
+        widget.bottomPage ?? Container(),
         StreamBuilder<int>(
-          stream: controller.topPageNumber,
+          stream: widget.controller.topPageNumber,
           builder: (context, snapshot) {
             return snapshot.hasData
                 ? IndexedStack(
-                    children: children,
+                    children: widget.children,
                     index: snapshot.data,
                   )
                 : Container();
           },
         ),
         StreamBuilder<FlyingPageData>(
-          stream: controller.flyingPage,
+          stream: widget.controller.flyingPage,
           builder: (context, snapshot) {
             final pageData = snapshot.data;
             return pageData == null
@@ -102,7 +61,7 @@ class SwipeStack extends StatelessWidget {
                     height: pageData.height,
                     child: Transform.rotate(
                       angle: pageData.angle,
-                      child: children[pageData.pageIndex],
+                      child: widget.children[pageData.pageIndex],
                     ),
                   );
           },
@@ -110,20 +69,26 @@ class SwipeStack extends StatelessWidget {
         GestureDetector(
           onHorizontalDragStart: (details) {
             RenderBox box = context.findRenderObject();
-            controller.startDrag(box.size, details.localPosition);
+            widget.controller.startDrag(box.size, details.localPosition);
           },
           onHorizontalDragUpdate: (details) {
-            controller.updateDrag(details.localPosition);
+            widget.controller.updateDrag(details.localPosition);
           },
           onHorizontalDragEnd: (details) {
-            controller.dragCancel();
+            widget.controller.dragCancel();
           },
           onHorizontalDragCancel: () {
-            controller.dragCancel();
+            widget.controller.dragCancel();
           },
         ),
       ],
     );
+  }
+
+  @override
+  void dispose() {
+    widget.controller?.dispose();
+    super.dispose();
   }
 }
 
@@ -144,6 +109,12 @@ class FlyingPageData {
     this.angle,
     this.pageIndex,
   );
+
+  @override
+  bool operator ==(Object other) => hashCode == other.hashCode;
+
+  @override
+  int get hashCode => pageIndex * 10000 + left.truncate() * 10;
 }
 
 /// Состоние на момент начала перетаскивания
@@ -160,9 +131,6 @@ class StartDragData {
   double dx(double currentX) => currentX - startX;
 }
 
-const xSpeedFactor = 2.0;
-const angleSpeedFactor = 6.0;
-
 class HorizontalSwipeController {
   StartDragData _startData;
   int topPageIndex = 0;
@@ -171,16 +139,8 @@ class HorizontalSwipeController {
   final topPageNumberController = BehaviorSubject<int>();
   final flyingPageController = BehaviorSubject<FlyingPageData>();
 
-  HorizontalSwipeController() {
-    topPageNumber.listen((event) {
-      print('top page=$event');
-    });
-  }
-
   Stream<int> get topPageNumber => topPageNumberController.distinct();
-
-  //todo тут тоже отбрасывать лишнее
-  Stream<FlyingPageData> get flyingPage => flyingPageController.stream;
+  Stream<FlyingPageData> get flyingPage => flyingPageController.distinct();
 
   _setItems(List<Widget> items) {
     _items = items;
@@ -249,8 +209,6 @@ class HorizontalSwipeController {
       }
     }
 
-    //print('dx=$dx, offset = $_position');
-
     if (deviation >= 1) {
       dragCancel();
       _pageUp();
@@ -264,7 +222,6 @@ class HorizontalSwipeController {
 
   dragCancel() {
     topPageNumberController.add(topPageIndex);
-
     _startData = null;
     flyingPageController.add(null);
   }
@@ -288,37 +245,5 @@ class HorizontalSwipeController {
   dispose() {
     topPageNumberController.close();
     flyingPageController.close();
-  }
-}
-
-//todo вынести отсюда падинги в _HorizontalSwipeState
-class PageCard extends StatelessWidget {
-  final Widget child;
-
-  const PageCard({Key key, this.child}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      child: Container(
-        child: child,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              blurRadius: FrPadding.verticalCardPadding,
-              color: FrColors.cardShadow,
-            ),
-          ],
-          borderRadius: FrSize.cardRadius,
-        ),
-      ),
-      padding: const EdgeInsets.only(
-        left: FrPadding.horizontalCardPadding,
-        right: FrPadding.horizontalCardPadding,
-        top: FrPadding.verticalCardPadding + 100,
-        bottom: FrPadding.verticalCardPadding + 10,
-      ),
-    );
   }
 }
