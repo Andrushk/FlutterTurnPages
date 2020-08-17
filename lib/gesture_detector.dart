@@ -81,10 +81,12 @@ class SwipeStack extends StatelessWidget {
         StreamBuilder<int>(
           stream: controller.topPageNumber,
           builder: (context, snapshot) {
-            return IndexedStack(
-              children: children,
-              index: snapshot.data ?? 0,
-            );
+            return snapshot.hasData
+                ? IndexedStack(
+                    children: children,
+                    index: snapshot.data,
+                  )
+                : Container();
           },
         ),
         StreamBuilder<FlyingPageData>(
@@ -108,16 +110,16 @@ class SwipeStack extends StatelessWidget {
         GestureDetector(
           onHorizontalDragStart: (details) {
             RenderBox box = context.findRenderObject();
-            controller.start(box.size, details.localPosition);
+            controller.startDrag(box.size, details.localPosition);
           },
           onHorizontalDragUpdate: (details) {
-            controller.move(details.localPosition);
+            controller.updateDrag(details.localPosition);
           },
           onHorizontalDragEnd: (details) {
-            controller.cancel();
+            controller.dragCancel();
           },
           onHorizontalDragCancel: () {
-            controller.cancel();
+            controller.dragCancel();
           },
         ),
       ],
@@ -163,100 +165,124 @@ const angleSpeedFactor = 6.0;
 
 class HorizontalSwipeController {
   StartDragData _startData;
-  int currentPageIndex = 0;
+  int topPageIndex = 0;
   List<Widget> _items = [];
 
   final topPageNumberController = BehaviorSubject<int>();
   final flyingPageController = BehaviorSubject<FlyingPageData>();
 
-  Stream<int> get topPageNumber => topPageNumberController.stream;
+  HorizontalSwipeController() {
+    topPageNumber.listen((event) {
+      print('top page=$event');
+    });
+  }
 
+  Stream<int> get topPageNumber => topPageNumberController.distinct();
+
+  //todo тут тоже отбрасывать лишнее
   Stream<FlyingPageData> get flyingPage => flyingPageController.stream;
 
   _setItems(List<Widget> items) {
     _items = items;
+    //todo можно запоминать страницу и после обновления списка позиционироваться на ней
+    if (_items != null && _items.length > 0) topPageNumberController.add(0);
   }
 
-  start(Size viewSize, Offset initialPosition) {
+  startDrag(Size viewSize, Offset initialPosition) {
     _startData = StartDragData(
       startX: initialPosition.dx,
       boxWidth: viewSize.width,
       boxHeight: viewSize.height,
-      pageIndex: currentPageIndex,
+      pageIndex: topPageIndex,
     );
   }
 
-  move(Offset currentPosition) {
+  updateDrag(Offset currentPosition) {
     if (_startData == null) return;
 
     final dx = _startData.dx(currentPosition.dx);
     final deviation = (dx / _startData.halfWidth).clamp(-1.0, 1.0);
 
-    // тащим вправо
+    notifyGui({int topPage, int flyPage, double left, double angle}) {
+      topPageNumberController.add(topPage);
+      flyingPageController
+          .add(FlyingPageData(_startData, left, angle, flyPage));
+    }
+
+    // тащим вправо (листание к вершине списка, нулевой индекс)
     if (deviation > 0) {
-      var flyPageIdx = currentPageIndex - 1;
-      // слева еще есть траницы
-      if (flyPageIdx >= 0) {
-        flyingPageController.add(
-          FlyingPageData(
-            _startData,
-            (dx - _startData.halfWidth) * xSpeedFactor,
-            (deviation - 1) / angleSpeedFactor,
-            flyPageIdx,
-          ),
+      if (noHigher) {
+        var limited = deviation.clamp(0, 0.1);
+        notifyGui(
+          topPage: noBelow ? null : topPageIndex + 1,
+          flyPage: 0,
+          left: limited * _startData.halfWidth * xSpeedFactor,
+          angle: limited / angleSpeedFactor,
         );
       } else {
-        // уже смотрим на последнюю станицу и больше слева ничего нет
-        var vp = deviation.clamp(0, 0.1) * _startData.halfWidth;
-
-        flyingPageController.add(
-          FlyingPageData(
-            _startData,
-            vp * xSpeedFactor,
-            deviation.clamp(0, 0.1) / angleSpeedFactor,
-            0,
-          ),
+        notifyGui(
+          topPage: topPageIndex,
+          flyPage: topPageIndex - 1,
+          left: (dx - _startData.halfWidth) * xSpeedFactor,
+          angle: (deviation - 1) / angleSpeedFactor,
         );
       }
-    } else if (deviation < 0) {
-      flyingPageController.add(FlyingPageData(
-        _startData,
-        dx * xSpeedFactor,
-        deviation / angleSpeedFactor,
-        0,
-      ));
+    }
+
+    // тащим влево (листание к дну списка)
+    if (deviation < 0) {
+      if (noBelow) {
+        var limited = deviation.clamp(-0.1, 0);
+        notifyGui(
+          topPage: null,
+          flyPage: topPageIndex,
+          left: limited * _startData.halfWidth * xSpeedFactor,
+          angle: limited / angleSpeedFactor,
+        );
+      } else {
+        notifyGui(
+          topPage: topPageIndex + 1,
+          flyPage: topPageIndex,
+          left: dx * xSpeedFactor,
+          angle: deviation / angleSpeedFactor,
+        );
+      }
     }
 
     //print('dx=$dx, offset = $_position');
 
     if (deviation >= 1) {
-      cancel();
-      nextPage();
+      dragCancel();
+      _pageUp();
     }
 
     if (deviation <= -1) {
-      cancel();
-      prevPage();
+      dragCancel();
+      _pageDown();
     }
   }
 
-  nextPage() {
-    if (currentPageIndex <= 0) return;
-    currentPageIndex--;
-    topPageNumberController.add(currentPageIndex);
-    print('next');
-  }
+  dragCancel() {
+    topPageNumberController.add(topPageIndex);
 
-  prevPage() {
-    if (currentPageIndex >= _items.length - 1) return;
-    currentPageIndex++;
-    topPageNumberController.add(currentPageIndex);
-    print('prev');
-  }
-
-  cancel() {
     _startData = null;
     flyingPageController.add(null);
+  }
+
+  bool get noHigher => topPageIndex <= 0;
+
+  bool get noBelow => topPageIndex >= _items.length - 1;
+
+  _pageUp() {
+    if (noHigher) return;
+    topPageIndex--;
+    topPageNumberController.add(topPageIndex);
+  }
+
+  _pageDown() {
+    if (noBelow) return;
+    topPageIndex++;
+    topPageNumberController.add(topPageIndex);
   }
 
   dispose() {
